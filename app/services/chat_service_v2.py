@@ -461,38 +461,31 @@ class ChatService:
                 full_response = ""
                 
                 # Stream the response
-                # async for chunk in self.llm.astream(prompt_data["prompt"]):
-                #     content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                #     full_response += content
-                #     print(content)
-                #     yield f"data: {content}\n\n"
-                #     # yield json.dumps({'content': content})#\n\n" # <--- Key change: SSE format
-
-                # async for chunk in self.llm.astream(prompt_data["prompt"]):
-                #     content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                #     words = content.split()  # Split the chunk into words
-                #     for word in words:
-                #         await asyncio.sleep(0.07)  # Adds a half-second delay between each word
-                #         yield f"data: {word} \n\n"  # Yield each word separately
-
                 async for chunk in self.llm.astream(prompt_data["prompt"]):
-                    # Extract the chunk content
                     content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    
-                    # Convert markdown to HTML for proper rendering
-                    html_content = markdown.markdown(content)
-                    
-                    # Optionally, strip HTML tags if needed
-                    # soup = BeautifulSoup(html_content, "html.parser")
-                    # clean_text = soup.get_text()  # Get just the plain text
-                    
-                    # Split the HTML content into words
-                    words = html_content.split()  # This splits into words, preserving HTML formatting
-                    
-                    # Yield each word one by one with a delay
+                    words = content.split()  # Split the chunk into words
                     for word in words:
-                        await asyncio.sleep(0.07)  # Adjust this delay as needed
+                        await asyncio.sleep(0.07)  # Adds a half-second delay between each word
                         yield f"data: {word} \n\n"  # Yield each word separately
+
+                # async for chunk in self.llm.astream(prompt_data["prompt"]):
+                #     # Extract the chunk content
+                #     content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    
+                #     # Convert markdown to HTML for proper rendering
+                #     html_content = markdown.markdown(content)
+                    
+                #     # Optionally, strip HTML tags if needed
+                #     # soup = BeautifulSoup(html_content, "html.parser")
+                #     # clean_text = soup.get_text()  # Get just the plain text
+                    
+                #     # Split the HTML content into words
+                #     words = html_content.split()  # This splits into words, preserving HTML formatting
+                    
+                #     # Yield each word one by one with a delay
+                #     for word in words:
+                #         await asyncio.sleep(0.07)  # Adjust this delay as needed
+                #         yield f"data: {word} \n\n"  # Yield each word separately
 
                 yield "data: [DONE]\n\n"
                 # After streaming is complete, save the message
