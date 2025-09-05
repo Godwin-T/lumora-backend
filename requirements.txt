@@ -6,6 +6,7 @@ pinecone
 python-magic
 aiofiles
 motor
+langchain
 python-multipart
 python-jose
 pycryptodome
