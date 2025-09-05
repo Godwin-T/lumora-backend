@@ -9,3 +9,5 @@ motor
 python-multipart
 python-jose
 pycryptodome
+fastapi
+uvicorn
