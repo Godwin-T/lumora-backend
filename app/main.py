@@ -26,8 +26,9 @@ async def on_startup():
 # Configure CORS
 origins = [
     "http://localhost",
+    "http://localhost:5173",
     "http://localhost:3000",  # Frontend development server
-    "https://yourdomain.com",  # Production domain
+    "https://lumora-ai-eo46.onrender.com",  # Production domain
     "https://lab-romantic-phoenix.ngrok-free.app"
 ]
 
