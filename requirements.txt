@@ -15,3 +15,4 @@ uvicorn
 python-dotenv
 langchain_openai
 pydantic[email]
+passlib[bcrypt]
