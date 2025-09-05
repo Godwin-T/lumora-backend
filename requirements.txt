@@ -12,3 +12,4 @@ pycryptodome
 fastapi
 uvicorn
 python-dotenv
+langchain_openai
