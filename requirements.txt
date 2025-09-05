@@ -19,3 +19,4 @@ passlib[bcrypt]
 langchain-community
 langchain-core
 langchain_pinecone
+markdown
