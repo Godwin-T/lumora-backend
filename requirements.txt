@@ -18,3 +18,4 @@ pydantic[email]
 passlib[bcrypt]
 langchain-community
 langchain-core
+langchain_pinecone
