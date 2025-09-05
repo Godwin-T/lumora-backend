@@ -1,9 +1,6 @@
 pdfplumber==0.10.2
 pymupdf==1.23.5
-sentence-transformers==2.2.2
-faiss-cpu==1.7.4
 numpy>=1.21
-nltk>=3.8
 openai>=1.0.0  # optional, only needed if using OpenAI for answering
 requests>=2.31.0  # optional, used by OpenAI's SDK
 langchain-google-genai
