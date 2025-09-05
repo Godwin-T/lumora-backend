@@ -329,23 +329,26 @@ class ChatService:
         context = "\n\n".join(context_parts)
         
         # Create system prompt
-        chat_history = memory.chat_memory.messages if memory.chat_memory.messages else []
+        try:
+            chat_history = memory.chat_memory.messages if memory.chat_memory.messages else []
+        except:
+            chat_history = memory
         system_prompt = self._build_system_prompt(is_premium)
         
-        #  Conversation History:
-        # {chat_history}
+        
         # Create the full prompt
         prompt = f"""
         {system_prompt}     
 
         Context information:
         {context}
+
+        Conversation History:
+        {chat_history}
         
         Question: {query}
         
         """
-
-        print(chat_history)
         
         # {memory.chat_memory.messages if memory.chat_memory.messages else 'No prior messages.'}
         # Get chat history for context
