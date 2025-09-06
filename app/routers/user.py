@@ -104,7 +104,7 @@ async def signup(user_data: UserCreate):
         profile=user.profile,
         usage_stats=user.usage_stats,
         created_at=user.created_at,
-        session_token=access_token
+        access_token=access_token
     )
     
     return user_response
