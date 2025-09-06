@@ -252,13 +252,13 @@ class LumoreRagChatService:
         # Compile the graph
         return workflow.compile()
     
-    async def create_anonymous_session(self, ip_address: str, user_agent: str, session_token: str) -> Session:
+    async def create_anonymous_session(self, ip_address: str, user_agent: str, access_token: str) -> Session:
         """Create session for anonymous user"""
         expires_at = datetime.utcnow() + timedelta(hours=24)
         
         session = Session(
             user_id=None,
-            session_token=session_token,
+            access_token=access_token,
             ip_address=ip_address,
             user_agent=user_agent,
             expires_at=expires_at,
@@ -272,10 +272,10 @@ class LumoreRagChatService:
         
         return session
 
-    async def get_session(self, session_token: str) -> Optional[Session]:
+    async def get_session(self, access_token: str) -> Optional[Session]:
         """Get session by token"""
         db = get_database()
-        session_data = await db.sessions.find_one({"session_token": session_token})
+        session_data = await db.sessions.find_one({"access_token": access_token})
         
         if not session_data:
             return None
@@ -284,16 +284,16 @@ class LumoreRagChatService:
         
         # Check if session is expired
         if session.expires_at < datetime.utcnow():
-            await self.deactivate_session(session_token)
+            await self.deactivate_session(access_token)
             return None
             
         return session
 
-    async def deactivate_session(self, session_token: str):
+    async def deactivate_session(self, access_token: str):
         """Deactivate session"""
         db = get_database()
         await db.sessions.update_one(
-            {"session_token": session_token},
+            {"access_token": access_token},
             {"$set": {"is_active": False}}
         )
 
@@ -314,7 +314,7 @@ class LumoreRagChatService:
     async def chat(
         self, 
         query: str, 
-        session_token: str,
+        access_token: str,
         ip_address: str,
         user_agent: str,
         user: Optional[User] = None
@@ -325,21 +325,21 @@ class LumoreRagChatService:
         
         try:
             # Get or create session
-            session = await self.get_session(session_token)
+            session = await self.get_session(access_token)
             if not session:
-                logger.info(f"Creating new session for token: {session_token[:8]}...")
+                logger.info(f"Creating new session for token: {access_token[:8]}...")
                 if user:
-                    session = await self.create_premium_session(user, ip_address, user_agent, session_token)
+                    session = await self.create_premium_session(user, ip_address, user_agent, access_token)
                 else:
-                    session = await self.create_anonymous_session(ip_address, user_agent, session_token)
+                    session = await self.create_anonymous_session(ip_address, user_agent, access_token)
             
             # Check rate limit
             if not await self.check_rate_limit(session, user):
-                logger.warning(f"Rate limit exceeded for session: {session_token[:8]}...")
+                logger.warning(f"Rate limit exceeded for session: {access_token[:8]}...")
                 return {
                     "success": False,
                     "error": "Rate limit exceeded. Please try again later.",
-                    "session_token": session.session_token
+                    "access_token": session.access_token
                 }
             
             # Convert chat history to messages format
@@ -360,7 +360,7 @@ class LumoreRagChatService:
                 "retrieval_context": None,
                 "should_retrieve": False,
                 "is_detail_request": False,
-                "session_id": session.session_token,
+                "session_id": session.access_token,
                 "user_id": str(user.id) if user else None,
                 "query_start_time": start_time
             }
@@ -401,7 +401,7 @@ class LumoreRagChatService:
             )
             
             # Update session with new message
-            await self._update_session_history(session.session_token, chat_message)
+            await self._update_session_history(session.access_token, chat_message)
             
             # Update user usage stats if premium
             if user:
@@ -411,7 +411,7 @@ class LumoreRagChatService:
                 "success": True,
                 "answer": response,
                 "sources": final_state.get("sources", []),
-                "session_token": session.session_token,
+                "access_token": session.access_token,
                 "message_id": message_id,
                 "response_time_ms": response_time_ms
             }
@@ -422,13 +422,13 @@ class LumoreRagChatService:
             return {
                 "success": False,
                 "error": f"Sorry, I encountered an error processing your request: {str(e)}",
-                "session_token": session_token
+                "access_token": access_token
             }
     
     async def stream_chat(
         self,
         query: str,
-        session_token: str,
+        access_token: str,
         ip_address: str,
         user_agent: str,
         user: Optional[User] = None
@@ -438,12 +438,12 @@ class LumoreRagChatService:
         logger.info(f"Stream chat request received: {query[:50]}...")
         
         # Get or create session
-        session = await self.get_session(session_token)
+        session = await self.get_session(access_token)
         if not session:
             if user:
-                session = await self.create_premium_session(user, ip_address, user_agent, session_token)
+                session = await self.create_premium_session(user, ip_address, user_agent, access_token)
             else:
-                session = await self.create_anonymous_session(ip_address, user_agent, session_token)
+                session = await self.create_anonymous_session(ip_address, user_agent, access_token)
         
         # Check rate limit
         if not await self.check_rate_limit(session, user):
@@ -469,7 +469,7 @@ class LumoreRagChatService:
                 "retrieval_context": None,
                 "should_retrieve": False,
                 "is_detail_request": False,
-                "session_id": session.session_token,
+                "session_id": session.access_token,
                 "user_id": str(user.id) if user else None,
                 "query_start_time": start_time
             }
@@ -532,7 +532,7 @@ class LumoreRagChatService:
                 )
                 
                 # Update session with new message
-                await self._update_session_history(session.session_token, chat_message)
+                await self._update_session_history(session.access_token, chat_message)
                 
                 # Update user usage stats if premium
                 if user:
@@ -547,13 +547,13 @@ class LumoreRagChatService:
                 yield "data: [DONE]\n\n"
             return StreamingResponse(error_generator(), media_type="text/event-stream")
     
-    async def create_premium_session(self, user: User, ip_address: str, user_agent: str, session_token: str) -> Session:
+    async def create_premium_session(self, user: User, ip_address: str, user_agent: str, access_token: str) -> Session:
         """Create session for premium user"""
         expires_at = datetime.utcnow() + timedelta(days=7)  # Longer session for premium
         
         session = Session(
             user_id=user.id,
-            session_token=session_token,
+            access_token=access_token,
             ip_address=ip_address,
             user_agent=user_agent,
             expires_at=expires_at,
@@ -567,11 +567,11 @@ class LumoreRagChatService:
         
         return session
     
-    async def _update_session_history(self, session_token: str, chat_message: ChatMessage):
+    async def _update_session_history(self, access_token: str, chat_message: ChatMessage):
         """Update session with new chat message"""
         db = get_database()
         await db.sessions.update_one(
-            {"session_token": session_token},
+            {"access_token": access_token},
             {
                 "$push": {"chat_history": chat_message.dict()},
                 "$set": {"updated_at": datetime.utcnow()}
@@ -589,20 +589,20 @@ class LumoreRagChatService:
             }
         )
 
-    async def get_chat_history(self, session_token: str, limit: int = 50) -> List[ChatMessage]:
+    async def get_chat_history(self, access_token: str, limit: int = 50) -> List[ChatMessage]:
         """Get chat history for a session"""
-        session = await self.get_session(session_token)
+        session = await self.get_session(access_token)
         if not session:
             return []
         
         # Return last N messages
         return session.chat_history[-limit:] if session.chat_history else []
 
-    async def clear_chat_history(self, session_token: str) -> bool:
+    async def clear_chat_history(self, access_token: str) -> bool:
         """Clear chat history for a session"""
         db = get_database()
         result = await db.sessions.update_one(
-            {"session_token": session_token},
+            {"access_token": access_token},
             {
                 "$set": {
                     "chat_history": [],
