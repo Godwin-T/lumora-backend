@@ -75,4 +75,4 @@ class UserResponse(BaseModel):
     profile: UserProfile
     usage_stats: UsageStats
     created_at: datetime
-    session_token: str
+    access_token: str
