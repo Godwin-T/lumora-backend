@@ -2,13 +2,12 @@ import os
 import asyncio
 from typing import List, Optional
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import (
-    PyPDFLoader, 
-    TextLoader, 
+from langchain_community.document_loaders import(
+    PyPDFLoader,
+    TextLoader,
     UnstructuredWordDocumentLoader,
     CSVLoader
 )
-
 from datetime import datetime
 from langchain.schema import Document
 from app.services.vector_store import VectorStoreService

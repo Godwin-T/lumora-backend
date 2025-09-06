@@ -23,18 +23,18 @@ load_dotenv()
 class ChatService:
     def __init__(self):
         self.vector_service = VectorStoreService()
-        # self.llm = ChatOpenAI(
-        #     temperature=0.1,
-        #     model="gpt-3.5-turbo",
-        #     max_tokens=1000
-        # )
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            temperature=0,
-            max_tokens=1000,
-            timeout=None,
-            max_retries=2,
+        self.llm = ChatOpenAI(
+            temperature=0.1,
+            model="gpt-5-mini",
+            max_tokens=1000
         )
+        # self.llm = ChatGoogleGenerativeAI(
+        #     model="gemini-2.5-flash",
+        #     temperature=0,
+        #     max_tokens=1000,
+        #     timeout=None,
+        #     max_retries=2,
+        # )
         
         # Rate limiting
         self.anonymous_rate_limit = int(os.getenv("ANONYMOUS_QUERIES_PER_HOUR", "10"))
