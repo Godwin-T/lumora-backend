@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from app.services.chat_service_v2 import ChatService
+from app.services.langgraph_chat_service import LumoreRagChatService
 from app.auth.dependencies import get_current_active_user, get_premium_user
 from app.models.user import User
 from app.models.session import ChatMessage
@@ -10,6 +11,7 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 chat_service = ChatService()
+langchain_chat_service = LumoreRagChatService()
 
 # Request/Response Models
 class AnonymousChatRequest(BaseModel):
@@ -64,11 +66,17 @@ async def anonymous_chat(
     user_agent = http_request.headers.get("User-Agent", "Unknown")
     
     # Process chat
-    result = await chat_service.anonymous_chat(
-        query=request.query.strip(),
-        session_token=request.session_token,
-        ip_address=ip_address,
-        user_agent=user_agent
+    # result = await chat_service.anonymous_chat(
+    #     query=request.query.strip(),
+    #     session_token=request.session_token,
+    #     ip_address=ip_address,
+    #     user_agent=user_agent
+    # )
+    result = await langchain_chat_service.chat(
+    query=request.query.strip(),
+    session_token=request.session_token,
+    ip_address=ip_address,
+    user_agent=user_agent
     )
     
     return ChatResponse(**result)

@@ -87,6 +87,14 @@ async def signup(user_data: UserCreate):
     # Insert into database
     db = get_database()
     await db.users.insert_one(user.dict(by_alias=True))
+
+    # Create access token
+    access_token_expires = timedelta(minutes=1440)  # 24 hours
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=access_token_expires
+    )
+    
     
     # Convert to response model
     user_response = UserResponse(
@@ -95,12 +103,13 @@ async def signup(user_data: UserCreate):
         subscription_type=user.subscription_type,
         profile=user.profile,
         usage_stats=user.usage_stats,
-        created_at=user.created_at
+        created_at=user.created_at,
+        session_token=access_token
     )
     
     return user_response
 
-@router.post("/token")
+@router.post("/token", response_model=UserResponse)
 async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
     """Login and get access token"""
     user = await authenticate_user(form_data.username, form_data.password)
@@ -118,7 +127,18 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
         expires_delta=access_token_expires
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Convert to response model
+    user_response = UserResponse(
+        id=str(user.id),
+        email=user.email,
+        subscription_type=user.subscription_type,
+        profile=user.profile,
+        usage_stats=user.usage_stats,
+        created_at=user.created_at,
+        session_token=access_token
+    )
+    
+    return user_response
 
 @router.get("/users/me", response_model=UserResponse)
 async def get_current_user_info(current_user: Annotated[User, Depends(get_current_user)]):
