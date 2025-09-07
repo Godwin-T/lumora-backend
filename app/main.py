@@ -29,7 +29,7 @@ origins = [
     "http://localhost:5173",
     "http://localhost:3000",  # Frontend development server
     "https://lumora-ai-eo46.onrender.com",  # Production domain
-    "https://lumora.hundred.name.ng/",
+    "https://lumora.hundred.name.ng",
     "https://lab-romantic-phoenix.ngrok-free.app"
 ]
 
