@@ -15,7 +15,7 @@ class ChatMessage(BaseModel):
 class Session(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     user_id: Optional[PyObjectId] = None
-    session_token: str
+    access_token: str
     ip_address: str
     user_agent: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
