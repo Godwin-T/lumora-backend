@@ -39,7 +39,7 @@ async def create_indexes():
     await db.users.create_index("pinecone_namespace", unique=True)
     
     # Sessions collection indexes
-    await db.sessions.create_index("session_token", unique=True)
+    await db.sessions.create_index("access_token", unique=True)
     await db.sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.sessions.create_index([("user_id", 1), ("created_at", -1)])
     
