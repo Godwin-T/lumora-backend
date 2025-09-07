@@ -16,7 +16,7 @@ langchain_chat_service = LumoreRagChatService()
 # Request/Response Models
 class AnonymousChatRequest(BaseModel):
     query: str
-    acccess_token: Optional[str] = None
+    access_token: Optional[str] = None
 
 class PremiumChatRequest(BaseModel):
     query: str
@@ -74,7 +74,7 @@ async def anonymous_chat(
     # )
     result = await langchain_chat_service.chat(
     query=request.query.strip(),
-    access_token=request.acccess_token,
+    access_token=request.access_token,
     ip_address=ip_address,
     user_agent=user_agent
     )
