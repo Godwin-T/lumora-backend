@@ -107,7 +107,7 @@ async def premium_chat(
     user_agent = http_request.headers.get("User-Agent", "Unknown")
     
     # Process chat
-    result = await chat_service.premium_chat(
+    result = await langchain_chat_service.chat(
         query=request.query.strip(),
         user=current_user,
         access_token=request.access_token,
