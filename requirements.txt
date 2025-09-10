@@ -22,3 +22,4 @@ langchain_pinecone
 markdown
 langgraph
 boto3
+pypdf
