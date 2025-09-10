@@ -13,16 +13,17 @@ from bson import ObjectId
 from fastapi import HTTPException, status, UploadFile
 
 class DocumentService:
-    def __init__(self):
+    def __init__(self, storage_location: str = "s3"):
+        """Initialize services and configurations"""
         self.file_service = FileService()
         self.document_processor = DocumentProcessor()
         self.vector_service = VectorStoreService()
+        self.storage_location = storage_location  # "s3",  "r2" or "local"
         self.max_documents_per_user = int(os.getenv("MAX_DOCUMENTS_PER_USER", "50"))
 
     async def upload_document(
         self, 
         file: UploadFile, 
-
         user: User, 
         document_upload: DocumentUpload
     ) -> Document:
@@ -34,13 +35,16 @@ class DocumentService:
         # Validate file
         file_info = await self.file_service.validate_file(file)
         
-        # Save file to disk
-        file_path = await self.file_service.save_file(file, str(user.id))
-        
+        # Save file
+        if self.storage_location == "local":
+            file_key = await self.file_service.save_local_file(file, str(user.id))
+        else:
+            file_key = await self.file_service.save_s3_file(file, str(user.id))
+
         # Create document record
         document = Document(
             user_id=user.id,
-            filename=Path(file_path).name,
+            filename=file_key,  # Using S3 key as filename
             original_filename=file.filename,
             file_type=self.file_service.get_file_type_from_extension(file.filename),
             file_size_bytes=file_info["file_size"],
@@ -64,18 +68,31 @@ class DocumentService:
         
         # Update user storage stats
         await self._update_user_storage_stats(user.id, file_info["file_size"])
-        
-        # Process document asynchronously
-        asyncio.create_task(
-            self.document_processor.process_document(
-                file_path=file_path,
-                document_id=str(document.id),
-                user_id=str(user.id),
-                file_type=document.file_type
+
+        if self.storage_location == "local":
+            # Process document from local file system
+            asyncio.create_task(
+                self.document_processor.process_local_document(
+                    file_path=file_key,
+                    document_id=str(document.id),
+                    user_id=str(user.id),
+                    file_type=document.file_type
+                )
             )
-        )
+        else:   
+            # Process document directly from S3/R2
+            asyncio.create_task(
+                self.document_processor.process_document_from_s3(
+                    file_key=file_key,
+                    document_id=str(document.id),
+                    user_id=str(user.id),
+                    file_type=document.file_type
+                )
+            )
         
         return document
+    
+    
 
     async def get_user_documents(
         self, 
@@ -139,7 +156,7 @@ class DocumentService:
             return False
         
         try:
-            # Delete vectors from Pinecone
+            # Delete vectors from vector database
             if document.pinecone_vector_ids:
                 namespace = f"user_{user_id}"
                 await self.vector_service.delete_documents(
@@ -147,8 +164,8 @@ class DocumentService:
                     namespace=namespace
                 )
             
-            # Delete file from disk
-            await self.file_service.delete_file(f"uploads/{document.filename}")
+            # Delete file from S3/R2
+            await self.file_service.delete_file(document.filename)
             
             # Delete from database
             result = await db.documents.delete_one({

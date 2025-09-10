@@ -1,23 +1,14 @@
 import os
 from pinecone import Pinecone
 from typing import List, Dict, Any, Optional
-from langchain_pinecone import PineconeVectorStore
-from langchain_core.embeddings import Embeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
-import uuid
 from datetime import datetime
+import uuid
 
-class DummyEmbeddings(Embeddings):
-    """Dummy embeddings for when Pinecone handles embeddings internally"""
-    
-    def embed_documents(self, texts):
-        # Return dummy embeddings since Pinecone handles this
-        return [[0.0] * 1536 for _ in texts]  # Adjust dimension as needed
-    
-    def embed_query(self, text):
-        return [0.0] * 1536  # Adjust dimension as needed
-    
+class Document:
+    """Simple document class to replace LangChain's Document"""
+    def __init__(self, page_content: str, metadata: Dict[str, Any] = None):
+        self.page_content = page_content
+        self.metadata = metadata or {}
 
 
 class VectorStoreService:
@@ -25,7 +16,6 @@ class VectorStoreService:
         # Initialize Pinecone
         self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         self.index_name = os.getenv("PINECONE_INDEX_NAME")
-        # self.embeddings = OpenAIEmbeddings()
         
         # Initialize index
         self._initialize_index()
@@ -36,7 +26,7 @@ class VectorStoreService:
         query: str, 
         namespaces: List[str],
         k: int = 5,
-        filter_dict: Dict[str, Any] = None
+        document_id: str = None
     ) -> List[Document]:
         """Search for similar documents across multiple namespaces using Pinecone's native embedding"""
         all_results = []
@@ -47,31 +37,35 @@ class VectorStoreService:
                 query_response = self.index.search(
                     namespace=namespace,
                     query={
-                            "top_k": k,
-                            "inputs": {
-                                'text': query
-                            }
+                        "top_k": k,
+                        "inputs": {
+                            'text': query
                         },
+                        "filter": {"document_id": document_id}
+                    },
                     rerank={
-                            "model": "bge-reranker-v2-m3",
-                            "top_n": 5,
-                            "rank_fields": ["chunk_text"]
-                        }, 
+                        "model": "bge-reranker-v2-m3",
+                        "top_n": 5,
+                        "rank_fields": ["chunk_text"]
+                    }, 
                 )
-                
-                # Convert Pinecone results to LangChain Documents
+                # print(query_response)
+                # Convert Pinecone results to Document objects
                 for hit in query_response['result']['hits']:
+
                     doc = Document(
                         page_content=hit["fields"]['chunk_text'],
+                        metadata=hit["fields"]
                     )
+                    # Add score to metadata
+                    doc.metadata['score'] = hit.get('score', 0)
                     all_results.append(doc)
-                    
             except Exception as e:
                 print(f"Error searching namespace {namespace}: {e}")
                 continue
         
         # Sort by score (descending) and return top k results
-        all_results.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
+        all_results.sort(key=lambda x: x.metadata.get('score', 0), reverse=True)
         return all_results[:k]
         
     def _initialize_index(self):
@@ -91,15 +85,6 @@ class VectorStoreService:
            print(f"Created Pinecone index: {self.index_name}")
         else:
             print(f"Using existing Pinecone index: {self.index_name}")
-    
-    def get_vector_store(self, namespace: str = None) -> PineconeVectorStore:
-        """Get LangChain Pinecone vector store for specific namespace"""
-        return PineconeVectorStore(
-            index=self.index,
-            text_key="chunk_text",
-            namespace=namespace,
-            embedding=DummyEmbeddings()
-        )
 
     async def add_documents(
         self, 
@@ -108,23 +93,45 @@ class VectorStoreService:
         user_id: str = None,
         document_id: str = None
     ) -> List[str]:
-        """Add documents to Pinecone with metadata"""
-        vector_store = self.get_vector_store(namespace)
+        """Add documents to Pinecone directly with batching"""
+        records = []
+        vector_ids = []
+        batch_size = 90  # Keeping below Pinecone's limit of 96
         
-        # Add metadata to documents
         for i, doc in enumerate(documents):
-            doc.metadata.update({
+            # Generate a unique ID for each document chunk
+            doc_id = document_id or str(uuid.uuid4())
+            vector_id = f"{doc_id}#{i}"
+            vector_ids.append(vector_id)
+            
+            # Create record with metadata
+            record = {
+                "_id": vector_id,
+                "chunk_text": doc.page_content,
+                "document_id": doc_id,
                 "user_id": user_id,
-                "document_id": document_id,
-                "chunk_index": i,
+                "chunk_number": i,
                 "created_at": datetime.utcnow().isoformat(),
-                "namespace": namespace
-            })
+            }
+            
+            # Add any additional metadata from the document
+            for key, value in doc.metadata.items():
+                if key not in record:
+                    record[key] = value
+                    
+            records.append(record)
         
-        # Add documents and return vector IDs
-        vector_ids = vector_store.add_documents(documents)
-        return vector_ids
-
+        # Upsert records to Pinecone in batches
+        try:
+            for i in range(0, len(records), batch_size):
+                batch = records[i:i + batch_size]
+                self.index.upsert_records(namespace, batch)
+                print(f"Upserted batch {i//batch_size + 1} of {(len(records) + batch_size - 1)//batch_size}")
+            
+            return vector_ids
+        except Exception as e:
+            print(f"Error upserting records: {e}")
+            return []
 
     async def similarity_search_with_score(
         self, 
@@ -134,25 +141,8 @@ class VectorStoreService:
         filter_dict: Dict[str, Any] = None
     ) -> List[tuple]:
         """Search with similarity scores"""
-        all_results = []
-        
-        for namespace in namespaces:
-            vector_store = self.get_vector_store(namespace)
-            
-            try:
-                results = vector_store.similarity_search_with_score(
-                    query=query,
-                    k=k,
-                    filter=filter_dict
-                )
-                all_results.extend(results)
-            except Exception as e:
-                print(f"Error searching namespace {namespace}: {e}")
-                continue
-        
-        # Sort by score (lower is better for cosine distance)
-        all_results.sort(key=lambda x: x[1])
-        return all_results[:k]
+        docs = await self.similarity_search(query, namespaces, k, filter_dict)
+        return [(doc, doc.metadata.get('score', 0)) for doc in docs]
 
     async def delete_documents(self, vector_ids: List[str], namespace: str):
         """Delete specific documents by vector IDs"""

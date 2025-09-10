@@ -21,3 +21,4 @@ langchain-core
 langchain_pinecone
 markdown
 langgraph
+boto3

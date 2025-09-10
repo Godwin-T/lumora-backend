@@ -11,7 +11,7 @@ from app.database import init_db
 load_dotenv()
 
 # Import routers
-from app.routers import chat_v2, documents, user
+from app.routers import chat, documents, user
 
 # Create FastAPI app
 app = FastAPI(
@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(chat_v2.router)
+app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(user.router)
 
