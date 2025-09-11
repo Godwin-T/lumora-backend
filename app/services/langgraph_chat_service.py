@@ -35,8 +35,8 @@ class GraphState(TypedDict):
     doc_id: Optional[str]  # Document ID for filtering
     namespace: Optional[str]  # Namespace for filtering
 
-# Nigerian tax and business regulation system prompt
-SYSTEM_PROMPT = """You are Lumora, an AI assistant specializing in Nigerian taxes, business regulations, and related matters.
+# Default system prompt for Nigerian tax and business regulation
+DEFAULT_SYSTEM_PROMPT = """You are Lumora, an AI assistant specializing in Nigerian taxes, business regulations, and related matters.
 
 Your primary goal is to provide accurate, helpful information about:
 - Nigerian tax laws and regulations
@@ -67,6 +67,32 @@ Guidelines:
    - Use tables for comparing information when relevant
 
 Remember that users rely on your information for important business decisions, so accuracy is crucial and proper formatting improves readability.
+"""
+
+# Document-specific system prompt for when a document ID is provided
+DOCUMENT_SYSTEM_PROMPT = """You are Lumora, an AI assistant that helps users understand and extract information from documents.
+
+Your primary goal is to provide accurate, helpful information based on the specific document the user is asking about.
+
+Guidelines:
+1. Initially provide concise, basic responses that cover just the essential information from the document.
+2. Only provide detailed explanations when the user explicitly asks for more information or details.
+3. If the information isn't in the document or your knowledge base, acknowledge this and avoid making up information.
+4. Base your answers strictly on the content of the document and relevant context provided.
+5. Maintain a professional, helpful tone.
+6. Do not provide legal, financial, or professional advice - clarify when appropriate that users should consult qualified professionals.
+7. At the end of your basic responses, you can add "Would you like me to explain this in more detail?" to encourage follow-up questions.
+8. Format your responses using proper Markdown:
+   - Use headings (## and ###) for main sections and subsections
+   - Use bullet points (*) or numbered lists (1.) for listing items
+   - Use **bold** for emphasis on important terms or concepts
+   - Use *italics* for definitions or specialized terms
+   - Use `code blocks` for specific values, rates, or figures
+   - Use > blockquotes for important notes or warnings
+   - Use horizontal rules (---) to separate major sections when appropriate
+   - Use tables for comparing information when relevant
+
+Remember that users rely on your information for understanding their documents, so accuracy is crucial and proper formatting improves readability.
 """
 
 # Configure logging
@@ -217,12 +243,15 @@ class LumoreRagChatService:
             logger.info(f"Is detail request: {is_detail_request}")
             
             try:
-                # Create the prompt
+                # Determine which system prompt to use based on whether a document ID is provided
+                base_prompt = DOCUMENT_SYSTEM_PROMPT if state.get("doc_id") else DEFAULT_SYSTEM_PROMPT
+            
+                # Create the prompt with context
                 if retrieval_context:
                     context_text = "\n\n".join(retrieval_context)
-                    system_message = f"{SYSTEM_PROMPT}\n\nRelevant information:\n{context_text}"
+                    system_message = f"{base_prompt}\n\nRelevant information:\n{context_text}"
                 else:
-                    system_message = SYSTEM_PROMPT
+                    system_message = base_prompt
                 
                 # Add instruction about response verbosity based on whether this is a detail request
                 if is_detail_request:
@@ -531,12 +560,15 @@ class LumoreRagChatService:
                 retrieval_context = retriever_state.get("retrieval_context", []) or []
                 sources = retriever_state.get("sources", []) or []
             
+            # Determine which system prompt to use based on whether a document ID is provided
+            base_prompt = DOCUMENT_SYSTEM_PROMPT if doc_id else DEFAULT_SYSTEM_PROMPT
+            
             # Create the prompt for streaming
             if retrieval_context:
                 context_text = "\n\n".join(retrieval_context)
-                system_message = f"{SYSTEM_PROMPT}\n\nRelevant information:\n{context_text}"
+                system_message = f"{base_prompt}\n\nRelevant information:\n{context_text}"
             else:
-                system_message = SYSTEM_PROMPT
+                system_message = base_prompt
             
             generator_prompt = ChatPromptTemplate.from_messages([
                 SystemMessage(content=system_message),
