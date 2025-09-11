@@ -91,8 +91,6 @@ class DocumentService:
             )
         
         return document
-    
-    
 
     async def get_user_documents(
         self, 
@@ -164,9 +162,12 @@ class DocumentService:
                     namespace=namespace
                 )
             
-            # Delete file from S3/R2
-            await self.file_service.delete_file(document.filename)
-            
+            # Delete file 
+            if self.storage_location == "local":
+                await self.file_service.delete_local_file(document.filename)
+            else:
+                await self.file_service.delete_s3_file(document.filename)
+
             # Delete from database
             result = await db.documents.delete_one({
                 "_id": ObjectId(document_id),
