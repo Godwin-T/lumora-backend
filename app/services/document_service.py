@@ -156,7 +156,7 @@ class DocumentService:
         try:
             # Delete vectors from vector database
             if document.pinecone_vector_ids:
-                namespace = f"user_{user_id}"
+                namespace = f"ID: {user_id}"
                 await self.vector_service.delete_documents(
                     vector_ids=document.pinecone_vector_ids,
                     namespace=namespace
@@ -259,8 +259,8 @@ class DocumentService:
         k: int = 10
     ) -> List[Dict[str, Any]]:
         """Search within user's documents"""
-        namespace = f"user_{user_id}"
-        
+        namespace = f"ID: {user_id}"
+
         results = await self.vector_service.similarity_search_with_score(
             query=query,
             namespaces=[namespace],
