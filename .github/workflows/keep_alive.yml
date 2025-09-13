@@ -1,0 +1,15 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    - cron: '*/1 * * * *'  # Every minute
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send request to backend
+        run: |
+          curl -s https://lumora-backend-1jdb.onrender.com > /dev/null
+          curl -s https://lumora.hundred.name.ng > /dev/null

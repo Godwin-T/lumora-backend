@@ -24,6 +24,7 @@ class Document(BaseModel):
     pinecone_vector_ids: List[str] = []
     metadata: DocumentMetadata = Field(default_factory=DocumentMetadata)
     error_log: Optional[str] = None
+    document_id: Optional[str] = None  # ID from external document service
 
     class Config:
         allow_population_by_field_name = True

@@ -13,7 +13,7 @@ from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
-from app.services.vector_store_v2 import VectorStoreService
+from app.services.vector_store import VectorStoreService
 from app.database import get_database
 from app.models.session import Session, ChatMessage
 from app.models.user import User
@@ -32,9 +32,11 @@ class GraphState(TypedDict):
     session_id: str  # Session identifier
     user_id: Optional[str]  # User ID if authenticated
     query_start_time: datetime  # When the query started
+    doc_id: Optional[str]  # Document ID for filtering
+    namespace: Optional[str]  # Namespace for filtering
 
-# Nigerian tax and business regulation system prompt
-SYSTEM_PROMPT = """You are Lumora, an AI assistant specializing in Nigerian taxes, business regulations, and related matters.
+# Default system prompt for Nigerian tax and business regulation
+DEFAULT_SYSTEM_PROMPT = """You are Lumora, an AI assistant specializing in Nigerian taxes, business regulations, and related matters.
 
 Your primary goal is to provide accurate, helpful information about:
 - Nigerian tax laws and regulations
@@ -65,6 +67,32 @@ Guidelines:
    - Use tables for comparing information when relevant
 
 Remember that users rely on your information for important business decisions, so accuracy is crucial and proper formatting improves readability.
+"""
+
+# Document-specific system prompt for when a document ID is provided
+DOCUMENT_SYSTEM_PROMPT = """You are Lumora, an AI assistant that helps users understand and extract information from documents.
+
+Your primary goal is to provide accurate, helpful information based on the specific document the user is asking about.
+
+Guidelines:
+1. Initially provide concise, basic responses that cover just the essential information from the document.
+2. Only provide detailed explanations when the user explicitly asks for more information or details.
+3. If the information isn't in the document or your knowledge base, acknowledge this and avoid making up information.
+4. Base your answers strictly on the content of the document and relevant context provided.
+5. Maintain a professional, helpful tone.
+6. Do not provide legal, financial, or professional advice - clarify when appropriate that users should consult qualified professionals.
+7. At the end of your basic responses, you can add "Would you like me to explain this in more detail?" to encourage follow-up questions.
+8. Format your responses using proper Markdown:
+   - Use headings (## and ###) for main sections and subsections
+   - Use bullet points (*) or numbered lists (1.) for listing items
+   - Use **bold** for emphasis on important terms or concepts
+   - Use *italics* for definitions or specialized terms
+   - Use `code blocks` for specific values, rates, or figures
+   - Use > blockquotes for important notes or warnings
+   - Use horizontal rules (---) to separate major sections when appropriate
+   - Use tables for comparing information when relevant
+
+Remember that users rely on your information for understanding their documents, so accuracy is crucial and proper formatting improves readability.
 """
 
 # Configure logging
@@ -151,18 +179,36 @@ class LumoreRagChatService:
             
             # Get user_id if available
             user_id = state.get("user_id")
+            doc_id = state.get("doc_id")
+            namespace = state.get("namespace")
             
             # Determine namespaces to search
             namespaces = self.default_namespace
+            
+            # If user is premium and specified a namespace, use it
+            if user_id and namespace:
+                namespaces = [namespace]
+
             logger.info(f"Searching namespaces: {namespaces}")
             
             try:
                 # Search for relevant documents
-                relevant_docs = await self.vector_service.similarity_search(
-                    query=last_message,
-                    namespaces=namespaces,
-                    k=5
-                )
+                if user_id and doc_id:
+                    # If doc_id is specified, filter by it
+                    relevant_docs = await self.vector_service.similarity_search(
+                        query=last_message,
+                        namespaces=namespaces,
+                        k=5,
+                        document_id=doc_id
+                    )
+                    logger.info(f"Filtering by doc_id: {doc_id} for user_id: {user_id} and namespace: {namespaces}")
+                else:
+                    # Regular search without doc_id filter
+                    relevant_docs = await self.vector_service.similarity_search(
+                        query=last_message,
+                        namespaces=namespaces,
+                        k=5
+                    )
                 
                 # Extract the content from the documents
                 retrieval_context = [doc.page_content for doc in relevant_docs]
@@ -197,12 +243,15 @@ class LumoreRagChatService:
             logger.info(f"Is detail request: {is_detail_request}")
             
             try:
-                # Create the prompt
+                # Determine which system prompt to use based on whether a document ID is provided
+                base_prompt = DOCUMENT_SYSTEM_PROMPT if state.get("doc_id") else DEFAULT_SYSTEM_PROMPT
+            
+                # Create the prompt with context
                 if retrieval_context:
                     context_text = "\n\n".join(retrieval_context)
-                    system_message = f"{SYSTEM_PROMPT}\n\nRelevant information:\n{context_text}"
+                    system_message = f"{base_prompt}\n\nRelevant information:\n{context_text}"
                 else:
-                    system_message = SYSTEM_PROMPT
+                    system_message = base_prompt
                 
                 # Add instruction about response verbosity based on whether this is a detail request
                 if is_detail_request:
@@ -326,7 +375,9 @@ class LumoreRagChatService:
         access_token: str,
         ip_address: str,
         user_agent: str,
-        user: Optional[User] = None
+        user: Optional[User] = None,
+        doc_id: Optional[str] = None,
+        namespace: Optional[str] = None
     ) -> Dict[str, Any]:
         """Handle chat request using LangGraph"""
         start_time = datetime.utcnow()
@@ -371,7 +422,9 @@ class LumoreRagChatService:
                 "is_detail_request": False,
                 "session_id": session.access_token,
                 "user_id": str(user.id) if user else None,
-                "query_start_time": start_time
+                "query_start_time": start_time,
+                "doc_id": doc_id,
+                "namespace": namespace
             }
             
             # Execute the graph
@@ -440,7 +493,9 @@ class LumoreRagChatService:
         access_token: str,
         ip_address: str,
         user_agent: str,
-        user: Optional[User] = None
+        user: Optional[User] = None,
+        doc_id: Optional[str] = None,
+        namespace: Optional[str] = None
     ) -> StreamingResponse:
         """Stream chat response to the client"""
         start_time = datetime.utcnow()
@@ -486,20 +541,34 @@ class LumoreRagChatService:
             # Execute the graph to determine if retrieval is needed and get context
             router_state = await self.workflow.get_node("router").ainvoke(initial_state)
             
+            # Add doc_id and namespace to the state for retrieval
+            router_state["doc_id"] = doc_id
+            router_state["namespace"] = namespace
+            
             # If retrieval is needed, get the context
             retrieval_context = []
             sources = []
             if router_state.get("should_retrieve", False):
-                retriever_state = await self.workflow.get_node("retriever").ainvoke({**initial_state, **router_state})
+                # Create a combined state with all necessary information
+                retriever_input = {
+                    **initial_state, 
+                    **router_state,
+                    "doc_id": doc_id,
+                    "namespace": namespace
+                }
+                retriever_state = await self.workflow.get_node("retriever").ainvoke(retriever_input)
                 retrieval_context = retriever_state.get("retrieval_context", []) or []
                 sources = retriever_state.get("sources", []) or []
+            
+            # Determine which system prompt to use based on whether a document ID is provided
+            base_prompt = DOCUMENT_SYSTEM_PROMPT if doc_id else DEFAULT_SYSTEM_PROMPT
             
             # Create the prompt for streaming
             if retrieval_context:
                 context_text = "\n\n".join(retrieval_context)
-                system_message = f"{SYSTEM_PROMPT}\n\nRelevant information:\n{context_text}"
+                system_message = f"{base_prompt}\n\nRelevant information:\n{context_text}"
             else:
-                system_message = SYSTEM_PROMPT
+                system_message = base_prompt
             
             generator_prompt = ChatPromptTemplate.from_messages([
                 SystemMessage(content=system_message),

@@ -1,10 +1,11 @@
 import os
 import uuid
-import shutil
+import boto3
 import aiofiles
 from typing import List, Dict, Any, Optional
 from fastapi import UploadFile, HTTPException, status
 from pathlib import Path
+from botocore.exceptions import ClientError
 import magic
 from datetime import datetime
 from app.database import get_database
@@ -14,8 +15,15 @@ from bson import ObjectId
 
 class FileService:
     def __init__(self):
-        self.upload_dir = Path("uploads")
-        self.upload_dir.mkdir(exist_ok=True)
+        # R2 configuration
+        self.s3_bucket = os.getenv("S3_BUCKET_NAME")
+        self.s3_client = boto3.client(
+            's3',
+            endpoint_url=os.getenv("R2_ENDPOINT_URL"),  # Cloudflare R2 endpoint URL
+            aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
+            region_name="auto"  # R2 uses 'auto' for region
+        )
         
         # File type configurations
         self.allowed_extensions = {'.pdf', '.txt', '.docx', '.doc', '.csv', '.md'}
@@ -66,7 +74,7 @@ class FileService:
             "file_size": file.size
         }
 
-    async def save_file(self, file: UploadFile, user_id: str) -> str:
+    async def save_local_file(self, file: UploadFile, user_id: str) -> str:
         """Save uploaded file to disk"""
         # Generate unique filename
         file_extension = Path(file.filename).suffix.lower()
@@ -79,8 +87,34 @@ class FileService:
             await f.write(content)
         
         return str(file_path)
+    
+    async def save_s3_file(self, file: UploadFile, user_id: str) -> str:
+        """Save uploaded file to S3 bucket"""
+        # Generate unique filename
+        file_extension = Path(file.filename).suffix.lower()
+        unique_filename = f"{user_id}_{uuid.uuid4()}{file_extension}"
+        
+        # Read file content
+        content = await file.read()
+        
+        # Upload to S3
+        try:
+            self.s3_client.put_object(
+                Bucket=self.s3_bucket,
+                Key=unique_filename,
+                Body=content,
+                ContentType=file.content_type
+            )
+            
+            # Return the S3 object key
+            return unique_filename
+        except ClientError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file to S3: {str(e)}"
+            )
 
-    async def delete_file(self, file_path: str) -> bool:
+    async def delete_local_file(self, file_path: str) -> bool:
         """Delete file from disk"""
         try:
             if os.path.exists(file_path):
@@ -89,6 +123,18 @@ class FileService:
             return False
         except Exception as e:
             print(f"Error deleting file {file_path}: {e}")
+            return False
+
+    async def delete_s3_file(self, file_key: str) -> bool:
+        """Delete file from S3 bucket"""
+        try:
+            self.s3_client.delete_object(
+                Bucket=self.s3_bucket,
+                Key=file_key
+            )
+            return True
+        except ClientError as e:
+            print(f"Error deleting file {file_key} from S3: {e}")
             return False
 
     def get_file_type_from_extension(self, filename: str) -> str:
