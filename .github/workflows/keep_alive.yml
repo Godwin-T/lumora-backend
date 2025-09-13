@@ -11,5 +11,5 @@ jobs:
     steps:
       - name: Send request to backend
         run: |
-          curl -s https://lumora-backend-1jdb.onrender.com > /dev/null
-          curl -s https://lumora.hundred.name.ng > /dev/null
+          curl -s "${{ secrets.BACKEND_URL }}" > /dev/null
+          curl -s "${{ secrets.FRONTEND_URL }}" > /dev/null
